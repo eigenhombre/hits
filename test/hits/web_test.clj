@@ -10,9 +10,8 @@
   (:require [noir.response :as resp])
   (:require [noir.server :as server]))
 
-(def start-repos
-  [["eigenhombre" "namejen"]
-   ["hits" "hits"]])
+(def start-repos [["eigenhombre" "namejen"]
+                  ["hits" "hits"]])
 
 (defn do-repos! [conn repos]
   (apply concat (map (fn [[name proj]] (add-repo-to-db! conn name proj)) repos)))
@@ -29,22 +28,28 @@
 
 (defn link-for [name repo] (format "/%s/%s" name repo))
 
-(noir/defpage "/author-data" []
-  (hicc/html
-    (form/form-to [:post "/author-data"]
-                  (form/label "user" "Owner: ")
-                  (form/text-field "user" "")
-                  (form/label "repo" "Repo: ")
-                  (form/text-field "repo" "")
-                  (form/submit-button "Go"))))
-
 (defn conditional-add-repo [user repo]
   (when-not (contains? (current-repos (d/db conn)) [user repo])
     (datomic.common/await-derefs (add-repo-to-db! conn user repo))))
 
 (defn author_data [user repo]
-  (conditional-add-repo user repo)
   (author-activity user repo "" (d/db conn)))
+
+(defn repolist []
+  (map (fn [[name repo]]
+         [:p (page/link-to {:class "proj",
+                            :id (str name "/" repo)}
+                           (link-for name repo)
+                           (str name "/" repo))])
+       (current-repos (d/db conn))))
+
+(defn repoform []
+  (form/form-to [:post "/author-data"]
+                (form/label "user" "Owner: ")
+                (form/text-field {:id "user"} "user" "")
+                (form/label "repo" "Repo: ")
+                (form/text-field "repo" "")
+                (form/submit-button {:id "submit"} "Go")))
 
 (noir/defpage [:post "/author-data"] {:keys [user repo]}
   (conditional-add-repo user repo)
@@ -62,19 +67,8 @@
              (page/include-js "/js/callbacks.js")
              [:h1 "Welcome to HITS (Hands in the Soup)"]
              [:p [:b "Available repos:"]]
-             [:div#repolist
-              (map (fn [[name repo]]
-                     [:p (page/link-to {:class "proj",
-                                        :id (str name "/" repo)}
-                                       (link-for name repo)
-                                       (str name "/" repo))])
-                   (current-repos (d/db conn)))]
-             (form/form-to [:post "/author-data"]
-                  (form/label "user" "Owner: ")
-                  (form/text-field {:id "user"} "user" "")
-                  (form/label "repo" "Repo: ")
-                  (form/text-field "repo" "")
-                  (form/submit-button {:id "submit"} "Go"))
+             [:div#repolist (repolist)]
+             (repoform)
              [:p "Or visit /owner/repo of your choice"]
              [:div#rawdata]))
 
@@ -93,7 +87,4 @@
 
 (defn -main []
   (web-main))
-
-(conditional-add-repo "sympy" "sympy")
-(file-activity "sympy" "sympy" "" (d/db conn))
 
