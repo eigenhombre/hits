@@ -38,18 +38,45 @@
                   (form/text-field "repo" "")
                   (form/submit-button "Go"))))
 
+(defn conditional-add-repo [user repo]
+  (when-not (contains? (current-repos (d/db conn)) [user repo])
+    (datomic.common/await-derefs (add-repo-to-db! conn user repo))))
+
+(defn author_data [user repo]
+  (conditional-add-repo user repo)
+  (author-activity user repo "" (d/db conn)))
+
 (noir/defpage [:post "/author-data"] {:keys [user repo]}
-  (when (not (contains? (current-repos (d/db conn)) [user repo]))
-    (datomic.common/await-derefs (add-repo-to-db! conn user repo)))
+  (conditional-add-repo user repo)
   (resp/json  (author-activity user repo "" (d/db conn))))
 
+(noir/defpage "/update" {:keys [user repo]}
+  (conditional-add-repo user repo)
+  (resp/json
+        {:current_repos (current-repos (d/db conn))
+         :author_data (author_data user repo)}))
+
 (noir/defpage "/" []
-  (hicc/html [:h1 "Welcome to HITS (Hands in the Soup)"]
+  (hicc/html (page/include-js (str "//ajax.googleapis.com/ajax/libs/jquery/"
+                                   "1.8.1/jquery.min.js"))
+             (page/include-js "/js/callbacks.js")
+             [:h1 "Welcome to HITS (Hands in the Soup)"]
              [:p [:b "Available repos:"]]
-             (map (fn [[name repo]]
-                    [:p (page/link-to (link-for name repo)
-                                      (str name "/" repo))]) (current-repos (d/db conn)))
-             [:p "Or visit /owner/repo of your choice"]))
+             [:div#repolist
+              (map (fn [[name repo]]
+                     [:p (page/link-to {:class "proj",
+                                        :id (str name "/" repo)}
+                                       (link-for name repo)
+                                       (str name "/" repo))])
+                   (current-repos (d/db conn)))]
+             (form/form-to [:post "/author-data"]
+                  (form/label "user" "Owner: ")
+                  (form/text-field {:id "user"} "user" "")
+                  (form/label "repo" "Repo: ")
+                  (form/text-field "repo" "")
+                  (form/submit-button {:id "submit"} "Go"))
+             [:p "Or visit /owner/repo of your choice"]
+             [:div#rawdata]))
 
 (noir/defpage "/:name/:repo" {:keys [name repo]}
   (when (not (contains? (current-repos (d/db conn)) [name repo]))
@@ -66,3 +93,7 @@
 
 (defn -main []
   (web-main))
+
+(conditional-add-repo "sympy" "sympy")
+(file-activity "sympy" "sympy" "" (d/db conn))
+
